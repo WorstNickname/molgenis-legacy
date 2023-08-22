@@ -1,3 +1,4 @@
+.idea/
 
 ## Build folders
 
@@ -38,3 +39,8 @@ log*
 /.settings
 /test-output
 /target/
+
+## Molgenis
+generated/
+handwritten/
+WebContent/

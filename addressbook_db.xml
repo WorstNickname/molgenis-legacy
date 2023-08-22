@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<molgenis name="addressbook">
+    <entity name="Contact">
+        <field name="contact_id" type="autoid"/>
+        <field name="displayname" unique="true"/>
+        <field name="firstname" nillable="true"/>
+        <field name="midinitials" nillable="true"/>
+        <field name="lastname" nillable="true"/>
+        <field name="birthday" type="date" nillable="true"/>
+    </entity>
+    <entity name="Address">
+        <field name="address_id" type="autoid"/>
+        <field name="phone"/>
+        <field name="address_type"
+               type="enum" enum_options="[home,work,mobile]"/>
+        <field name="contact" type="xref"
+               xref_field="Contact.contact_id"
+               xref_label="displayname"/>
+    </entity>
+</molgenis>

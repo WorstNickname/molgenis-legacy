@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<molgenis name="addressbook">
+    <plugin name="molgenis_header"
+            type="plugins.header.MolgenisHeader" />
+    <form entity="Contact" name="Contacts">
+        <form entity="Address" name="Addresses" view="list"/>
+    </form>
+</molgenis>
