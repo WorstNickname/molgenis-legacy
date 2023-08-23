@@ -14,12 +14,6 @@ public class TableReaderFactory {
     }
 
     public static TableReader create(File file) throws IOException {
-        if (file == null) {
-            throw new IllegalArgumentException("file is null");
-        }
-        if (!file.isFile()) {
-            throw new IllegalArgumentException("file is not a file: " + file.getName());
-        }
         return createTableReader(file);
     }
 
@@ -37,6 +31,12 @@ public class TableReaderFactory {
     }
 
     private static TableReader createTableReader(File file) throws IOException {
-        return TABLE_READER_CREATION_STRATEGY_CONTEXT.proceed(file);
+        if (file == null) {
+            throw new IllegalArgumentException("file is null");
+        }
+        if (!file.isFile()) {
+            throw new IllegalArgumentException("file is not a file: " + file.getName());
+        }
+        return TABLE_READER_CREATION_STRATEGY_CONTEXT.executeCreationStrategy(file);
     }
 }
