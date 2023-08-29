@@ -1,5 +1,14 @@
 package org.molgenis.model;
 
+import org.apache.log4j.Logger;
+import org.molgenis.MolgenisOptions;
+import org.molgenis.fieldtypes.MrefField;
+import org.molgenis.fieldtypes.XrefField;
+import org.molgenis.framework.db.DatabaseException;
+import org.molgenis.model.elements.Entity;
+import org.molgenis.model.elements.Field;
+import org.molgenis.model.elements.Model;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -7,175 +16,132 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
 
-import org.apache.log4j.Logger;
-import org.molgenis.MolgenisOptions;
-import org.molgenis.fieldtypes.MrefField;
-import org.molgenis.fieldtypes.XrefField;
-import org.molgenis.model.elements.Entity;
-import org.molgenis.model.elements.Field;
-import org.molgenis.model.elements.Model;
+public class MolgenisModel {
+    private static final Logger logger = Logger.getLogger(MolgenisModel.class.getSimpleName());
 
-public class MolgenisModel
-{
-	private static final Logger logger = Logger.getLogger(MolgenisModel.class.getSimpleName());
+    public static Model parse(MolgenisOptions options) throws MolgenisModelException, DatabaseException {
+        try {
+            logger.info("Parsing db-schema from " + options.model_database);
 
-	public static Model parse(MolgenisOptions options) throws Exception
-	{
-		Model model = null;
+            Model model = MolgenisModelParser.parseDbSchema(options.model_database);
 
-		try
-		{
-			logger.info("parsing db-schema from " + options.model_database);
+            addAuthorizableEntities(model, options.authorizable);
 
-			// 19-4-2011 ER: unused code, so commented out!
-			// ArrayList<String> db_files = options.model_database;
-			// for (int i = 0; i < db_files.size(); i++)
-			// db_files.set(i, options.path + db_files.get(i));
+            logger.debug("Read: " + model);
 
-			model = MolgenisModelParser.parseDbSchema(options.model_database);
+            MolgenisModelValidator.validate(model, options);
 
-			// Get the strings of the property 'authorizable' and add the entity
-			// name
-			// 'Authorizable' to the list of Implements. Solves datamodel
-			// duplication
-			// in molgenis_apps suite. Possible future work: put auth
-			// dependencies into
-			// molgenis itself so it becomes generic across projects.
-			for (String eName : options.authorizable)
-			{
-				eName = eName.trim(); // allow e.g. 'Observation, Investigation'
-				Vector<String> implNames = model.getEntity(eName).getImplementsNames();
-				if (!implNames.contains("Authorizable"))
-				{
-					implNames.add("Authorizable");
-					model.getEntity(eName).setImplements(implNames);
-				}
-			}
+            logger.info("parsing ui-schema");
+            MolgenisModelParser.parseUiSchema(options.path + options.model_userinterface, model);
 
-			logger.debug("read: " + model);
+            MolgenisModelValidator.validateUI(model, options);
 
-			// if (!options.exclude_system) Model.createSystemTables(model);
-			MolgenisModelValidator.validate(model, options);
+            logger.debug("validated: " + model);
 
-			logger.info("parsing ui-schema");
-			model = MolgenisModelParser.parseUiSchema(options.path + options.model_userinterface, model);
-			// if (options.force_molgenis_package == true)
-			// model.setName("molgenis");
+            return model;
+        } catch (MolgenisModelException e) {
+            logger.error("Parsing failed: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
+    }
 
-			MolgenisModelValidator.validateUI(model, options);
+    public static Model parse(Properties p) throws MolgenisModelException, DatabaseException {
+        MolgenisOptions options = new MolgenisOptions(p);
+        return parse(options);
+    }
 
-			logger.debug("validated: " + model);
-		}
-		catch (MolgenisModelException e)
-		{
-			logger.error("Parsing failed: " + e.getMessage());
-			e.printStackTrace();
-			throw e;
-		}
-		return model;
-	}
+    public static List<Entity> sortEntitiesByDependency(List<Entity> entityList, final Model model)
+            throws MolgenisModelException {
+        List<Entity> result = new ArrayList<Entity>();
+        List<Entity> toBeMoved = new ArrayList<Entity>();
 
-	public static Model parse(Properties p) throws Exception
-	{
-		MolgenisOptions options = new MolgenisOptions(p);
-		return parse(options);
-	}
+        boolean found = true;
+        while (!entityList.isEmpty() && found) {
+            found = false;
+            for (Entity entity : entityList) {
+                List<String> deps = getDependencies(entity, model);
 
-	public static List<Entity> sortEntitiesByDependency(List<Entity> entityList, final Model model)
-			throws MolgenisModelException
-	{
-		List<Entity> result = new ArrayList<Entity>();
+                boolean missing = false;
+                for (String dep : deps) {
+                    if (indexOf(result, dep) < 0) {
+                        missing = true;
+                        break;
+                    }
+                }
 
-		boolean found = true;
-		List<Entity> toBeMoved = new ArrayList<Entity>();
-		while (entityList.size() > 0 && found)
-		{
-			found = false;
-			for (Entity entity : entityList)
-			{
-				List<String> deps = getDependencies(entity, model);
+                if (!missing) {
+                    toBeMoved.add(entity);
+                    result.add(entity);
+                    found = true;
+                    break;
+                }
+            }
 
-				// check if all deps are there
-				boolean missing = false;
-				for (String dep : deps)
-				{
-					if (indexOf(result, dep) < 0)
-					{
-						missing = true;
-						break;
-					}
-				}
+            for (Entity e : toBeMoved) {
+                entityList.remove(e);
+            }
+            toBeMoved.clear();
+        }
 
-				if (!missing)
-				{
-					toBeMoved.add(entity);
-					result.add(entity);
-					found = true;
-					break;
-				}
-			}
+        // list not empty, cyclic?
+        for (Entity e : entityList) {
+            logger.error("cyclic relations to '" + e.getName() + "' depends on " + getDependencies(e, model));
+            result.add(e);
+        }
 
-			for (Entity e : toBeMoved)
-				entityList.remove(e);
-			toBeMoved.clear();
-		}
+        // result
+        for (Entity e : result) {
+            logger.info(e.getName());
+        }
 
-		// list not empty, cyclic?
-		for (Entity e : entityList)
-		{
-			logger.error("cyclic relations to '" + e.getName() + "' depends on " + getDependencies(e, model));
-			result.add(e);
-		}
+        return result;
+    }
 
-		// result
-		for (Entity e : result)
-		{
-			logger.info(e.getName());
-		}
+    private static int indexOf(List<Entity> entityList, String entityName) {
+        for (int i = 0; i < entityList.size(); i++) {
+            if (entityList.get(i).getName().equals(entityName)) {
+                return i;
+            }
+        }
+        return -1;
+    }
 
-		return result;
-	}
+    private static List<String> getDependencies(Entity currentEntity, Model model) throws MolgenisModelException {
+        Set<String> dependencies = new HashSet<String>();
 
-	private static int indexOf(List<Entity> entityList, String entityName)
-	{
-		for (int i = 0; i < entityList.size(); i++)
-		{
-			if (entityList.get(i).getName().equals(entityName)) return i;
-		}
-		return -1;
-	}
+        for (Field field : currentEntity.getAllFields()) {
+            if (field.getType() instanceof XrefField) {
+                dependencies.add(model.getEntity(field.getXrefEntityName()).getName());
 
-	private static List<String> getDependencies(Entity currentEntity, Model model) throws MolgenisModelException
-	{
-		Set<String> dependencies = new HashSet<String>();
+                Entity xrefEntity = field.getXrefEntity();
 
-		for (Field field : currentEntity.getAllFields())
-		{
-			if (field.getType() instanceof XrefField)
-			{
-				dependencies.add(model.getEntity(field.getXrefEntityName()).getName());
+                for (Entity e : xrefEntity.getAllDescendants()) {
+                    dependencies.add(e.getName());
+                }
+            }
+            if (field.getType() instanceof MrefField) {
+                dependencies.add(field.getXrefEntity().getName());
+                dependencies.addAll(model.getEntity(field.getXrefEntity().getName()).getParents());
+            }
+        }
 
-				Entity xrefEntity = field.getXrefEntity();
+        dependencies.remove(currentEntity.getName());
+        return new ArrayList<String>(dependencies);
+    }
 
-				// also all subclasses have this xref!!!!
-				for (Entity e : xrefEntity.getAllDescendants())
-				{
-					if (!dependencies.contains(e.getName())) dependencies.add(e.getName());
-				}
-			}
-			if (field.getType() instanceof MrefField)
-			{
-				dependencies.add(field.getXrefEntity().getName()); // mref
-				// fields
-				// including super classes
-				for (String name : model.getEntity(field.getXrefEntity().getName()).getParents())
-				{
-					dependencies.add(name);
-				}
-			}
-		}
-
-		dependencies.remove(currentEntity.getName());
-		return new ArrayList<String>(dependencies);
-	}
+    private static void addAuthorizableEntities(Model model, List<String> authorizableEntites) {
+        String authorizable = "Authorizable";
+        for (String entityName : authorizableEntites) {
+            entityName = entityName.trim();
+            Entity entity = model.getEntity(entityName);
+            if (entity != null) {
+                Vector<String> implNames = entity.getImplementsNames();
+                if (!implNames.contains(authorizable)) {
+                    implNames.add(authorizable);
+                    entity.setImplements(implNames);
+                }
+            }
+        }
+    }
 }
