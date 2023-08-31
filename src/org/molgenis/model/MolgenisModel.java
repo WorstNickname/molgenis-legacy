@@ -34,7 +34,7 @@ public class MolgenisModel {
             logger.info("parsing ui-schema");
             MolgenisModelParser.parseUiSchema(options.path + options.model_userinterface, model);
 
-            MolgenisModelValidator.validateUI(model, options);
+            MolgenisModelValidator.validateUI(model);
 
             logger.debug("validated: " + model);
 

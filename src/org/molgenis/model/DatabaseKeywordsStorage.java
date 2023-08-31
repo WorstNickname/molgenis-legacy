@@ -22,6 +22,9 @@ public class DatabaseKeywordsStorage {
     public static final String CURRENT_TIMESTAMP = "CURRENT_TIMESTAMP";
     public static final String FOREIGN_KEY_COLUMN_NAME = "FKCOLUMN_NAME";
     public static final String PRIMARY_KEY_COLUMN_NAME = "PKTABLE_NAME";
+    public static final String ORACLE = "oracle";
+    public static final String MYSQL = "mysql";
+    public static final String HSQL = "hsql";
 
     public static final String[] MOLGENIS_KEYWORDS =
             {"entity", "field", "form", "menu", "screen", "plugin"};

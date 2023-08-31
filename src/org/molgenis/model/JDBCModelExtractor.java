@@ -76,6 +76,7 @@ public class JDBCModelExtractor {
         props.load(new FileInputStream(MOLGENIS_PROPERTIES));
 
         jdbcModelExtractor.extractXml(props);
+
     }
 
     public String extractXml(MolgenisOptions options) {
